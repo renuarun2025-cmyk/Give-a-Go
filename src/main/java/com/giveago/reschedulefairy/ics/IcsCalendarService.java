@@ -14,7 +14,10 @@ import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.TzId;
 import net.fortuna.ical4j.model.property.Attendee;
 import net.fortuna.ical4j.model.property.DateProperty;
+import net.fortuna.ical4j.model.property.DtStamp;
+import net.fortuna.ical4j.model.property.LastModified;
 import net.fortuna.ical4j.model.property.Organizer;
+import net.fortuna.ical4j.model.property.Sequence;
 import net.fortuna.ical4j.model.property.Uid;
 
 import java.io.ByteArrayInputStream;
@@ -109,6 +112,7 @@ public class IcsCalendarService {
             Duration shift = Duration.between(oldStart, move.to());
             setLocal(start, move.to(), parsed.zone());
             end.ifPresent(e -> setLocal(e, toLocal(e.getDate(), parsed.zone()).plus(shift), parsed.zone()));
+            markRevised(vevent);
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
@@ -117,6 +121,15 @@ public class IcsCalendarService {
             throw new IllegalStateException("Could not write calendar", e);
         }
         return out.toByteArray();
+    }
+
+    /** Calendar apps only replace an already-imported event when its SEQUENCE/DTSTAMP say it is newer. */
+    private static void markRevised(VEvent vevent) {
+        int sequence = vevent.<Sequence>getProperty(Property.SEQUENCE).map(Sequence::getSequenceNo).orElse(0);
+        Instant now = Instant.now();
+        vevent.replace(new Sequence(sequence + 1));
+        vevent.replace(new DtStamp(now));
+        vevent.replace(new LastModified(now));
     }
 
     private static void setLocal(DateProperty<Temporal> property, LocalDateTime local, ZoneId zone) {
