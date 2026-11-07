@@ -83,6 +83,31 @@ class IcsRoundTripTest {
     }
 
     @Test
+    void movedEventsGetBumpedSequenceAndDtStampSoCalendarAppsUpdateThem() {
+        String calendar = String.join("\r\n",
+                "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//test//EN",
+                "BEGIN:VEVENT", "UID:moved@test", "DTSTAMP:20261101T120000Z", "SEQUENCE:2",
+                "DTSTART:20261105T100000", "DTEND:20261105T110000", "SUMMARY:Moved", "END:VEVENT",
+                "BEGIN:VEVENT", "UID:new@test", "DTSTAMP:20261101T120000Z",
+                "DTSTART:20261105T120000", "DTEND:20261105T130000", "SUMMARY:No sequence", "END:VEVENT",
+                "BEGIN:VEVENT", "UID:stays@test", "DTSTAMP:20261101T120000Z",
+                "DTSTART:20261105T140000", "DTEND:20261105T150000", "SUMMARY:Stays", "END:VEVENT",
+                "END:VCALENDAR", "");
+        ParsedCalendar parsed = ics.parse(calendar.getBytes(StandardCharsets.UTF_8));
+        byte[] written = ics.write(parsed, List.of(
+                new RescheduleResult.Move("moved@test", "Moved",
+                        LocalDateTime.of(2026, 11, 5, 10, 0), LocalDateTime.of(2026, 11, 6, 13, 0)),
+                new RescheduleResult.Move("new@test", "No sequence",
+                        LocalDateTime.of(2026, 11, 5, 12, 0), LocalDateTime.of(2026, 11, 6, 15, 0))));
+
+        String[] blocks = new String(written, StandardCharsets.UTF_8).replace("\r\n", "\n").split("BEGIN:VEVENT");
+        String moved = blocks[1], noSequence = blocks[2], stays = blocks[3];
+        assertThat(moved).contains("SEQUENCE:3").contains("LAST-MODIFIED:").doesNotContain("DTSTAMP:20261101T120000Z");
+        assertThat(noSequence).contains("SEQUENCE:1").doesNotContain("DTSTAMP:20261101T120000Z");
+        assertThat(stays).contains("DTSTAMP:20261101T120000Z").doesNotContain("SEQUENCE").doesNotContain("LAST-MODIFIED");
+    }
+
+    @Test
     void preservesTimeZonesWhenWritingMovedEvents() {
         String calendar = """
                 BEGIN:VCALENDAR
