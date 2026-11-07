@@ -45,12 +45,13 @@ public class RescheduleService {
                         .thenComparing(CalendarEvent::uid))
                 .toList();
 
-        List<CalendarEvent> busy = new ArrayList<>(events.stream().filter(e -> !toMove.contains(e)).toList());
+        List<CalendarEvent> busy = new ArrayList<>(events);
         Map<CalendarEvent, CalendarEvent> placed = new HashMap<>();
         List<Move> moves = new ArrayList<>();
         List<Unplaceable> unplaceable = new ArrayList<>();
 
         for (CalendarEvent event : toMove) {
+            busy.remove(event);
             Optional<LocalDateTime> slot = findEarliestSlot(event.duration(), windows, busy, buffer);
             if (slot.isPresent()) {
                 CalendarEvent moved = event.withStart(slot.get());
@@ -58,6 +59,7 @@ public class RescheduleService {
                 placed.put(event, moved);
                 moves.add(new Move(event.uid(), event.title(), event.start(), moved.start()));
             } else {
+                busy.add(event);
                 unplaceable.add(new Unplaceable(event.uid(), event.title(), reasonFor(event, windows, bufferMinutes)));
             }
         }

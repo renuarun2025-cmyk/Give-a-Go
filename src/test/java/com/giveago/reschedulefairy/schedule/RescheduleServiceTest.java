@@ -165,6 +165,18 @@ class RescheduleServiceTest {
     }
 
     @Test
+    void unplaceableOvernightEventStillBlocksItsTargetDayHours() {
+        List<CalendarEvent> events = List.of(
+                new CalendarEvent("overnight", "overnight", THU.atTime(22, 0), FRI.atTime(10, 0), true),
+                event("short", THU, "10:00", "11:00", true));
+        RescheduleResult result = service.reschedule(events, THU,
+                List.of(window(FRI, "09:00", "12:00")), WorkingHours.DEFAULT, 0);
+
+        assertThat(result.unplaceable()).extracting(RescheduleResult.Unplaceable::uid).containsExactly("overnight");
+        assertThat(byUid(result.after()).get("short").start()).isEqualTo(FRI.atTime(10, 0));
+    }
+
+    @Test
     void rejectsTargetWindowOnTheSourceDay() {
         assertThatThrownBy(() -> service.reschedule(thursdayAndFriday(), THU,
                 List.of(window(THU, "13:00", "17:00")), WorkingHours.DEFAULT, 15))
