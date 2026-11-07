@@ -15,11 +15,17 @@
     <description>Reschedule Fairy</description>
     <properties>
         <java.version>21</java.version>
+        <ical4j.version>4.4.0</ical4j.version>
     </properties>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.mnode.ical4j</groupId>
+            <artifactId>ical4j</artifactId>
+            <version>${ical4j.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
