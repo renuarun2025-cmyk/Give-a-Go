@@ -8,6 +8,7 @@ import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Parameter;
+import net.fortuna.ical4j.model.Period;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.TzId;
@@ -30,6 +31,7 @@ import java.time.ZonedDateTime;
 import java.time.temporal.Temporal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,12 +47,14 @@ import java.util.stream.Collectors;
  * Reads .ics files into {@link CalendarEvent}s and writes moved events back into the original calendar.
  *
  * <p>An event is FIXED when its title contains "[fixed]" or when it has an attendee whose email domain differs
- * from the calendar owner's domain (the most common ORGANIZER domain in the file), or when it recurs.
- * All-day and cancelled events are ignored.
+ * from the calendar owner's domain (the most common ORGANIZER domain in the file), or when it recurs. Later
+ * occurrences of recurring series are added as fixed events. All-day and cancelled events are ignored.
  */
 public class IcsCalendarService {
 
     private static final String FIXED_MARKER = "[fixed]";
+    private static final int RECURRENCE_HORIZON_DAYS = 31;
+    private static final int MAX_OCCURRENCES_PER_SERIES = 500;
 
     public ParsedCalendar parse(byte[] content) {
         if (content == null || content.length == 0) {
@@ -89,6 +93,7 @@ public class IcsCalendarService {
         if (events.isEmpty()) {
             throw new InvalidCalendarException("The calendar contains no timed events");
         }
+        events.addAll(expandRecurrences(events, components, vevents, zone));
         return new ParsedCalendar(calendar, List.copyOf(events), components, zone);
     }
 
@@ -149,13 +154,69 @@ public class IcsCalendarService {
 
         String title = vevent.getProperty(Property.SUMMARY).map(Property::getValue).orElse("(untitled)");
         String uid = uniqueUid(vevent, calendarUids, usedUids);
-        boolean recurring = vevent.getProperty(Property.RRULE).isPresent();
+        boolean recurring = vevent.getProperty(Property.RRULE).isPresent()
+                || vevent.getProperty(Property.RDATE).isPresent()
+                || vevent.getProperty(Property.RECURRENCE_ID).isPresent();
         boolean external = ownerDomain.isPresent() && vevent.<Attendee>getProperties(Property.ATTENDEE).stream()
                 .map(a -> domainOf(a.getCalAddress()))
                 .flatMap(Optional::stream)
                 .anyMatch(domain -> !domain.equals(ownerDomain.get()));
         boolean markedFixed = title.toLowerCase(Locale.ROOT).contains(FIXED_MARKER);
         return Optional.of(new CalendarEvent(uid, title, start, end, !(external || markedFixed || recurring)));
+    }
+
+    /**
+     * Adds the later occurrences of recurring series as fixed events so that nothing is moved on top of them.
+     * The range covers the calendar's events plus a few weeks, which includes any realistic target window.
+     */
+    private static List<CalendarEvent> expandRecurrences(List<CalendarEvent> events, Map<String, VEvent> components,
+                                                         List<VEvent> vevents, ZoneId zone) {
+        LocalDateTime rangeStart = events.stream().map(CalendarEvent::start).min(LocalDateTime::compareTo).orElseThrow();
+        LocalDateTime rangeEnd = events.stream().map(CalendarEvent::end).max(LocalDateTime::compareTo).orElseThrow()
+                .plusDays(RECURRENCE_HORIZON_DAYS);
+        Set<String> overridden = vevents.stream()
+                .filter(v -> v.getUid().isPresent())
+                .flatMap(v -> v.<DateProperty<Temporal>>getProperty(Property.RECURRENCE_ID).stream()
+                        .map(r -> v.getUid().get().getValue() + "|" + toLocal(r.getDate(), zone)))
+                .collect(Collectors.toSet());
+
+        Map<String, CalendarEvent> byUid = events.stream()
+                .collect(Collectors.toMap(CalendarEvent::uid, Function.identity()));
+        List<CalendarEvent> occurrences = new ArrayList<>();
+        components.forEach((uid, vevent) -> {
+            if (vevent.getProperty(Property.RRULE).isEmpty() && vevent.getProperty(Property.RDATE).isEmpty()) {
+                return;
+            }
+            CalendarEvent master = byUid.get(uid);
+            String rawUid = vevent.getUid().map(Uid::getValue).orElse(uid);
+            occurrencesOf(vevent, rangeStart, rangeEnd, zone).stream()
+                    .filter(o -> !o.start().equals(master.start()))
+                    .filter(o -> !overridden.contains(rawUid + "|" + o.start()))
+                    .limit(MAX_OCCURRENCES_PER_SERIES)
+                    .map(o -> new CalendarEvent(uid + "@" + o.start(), master.title(), o.start(), o.end(), false))
+                    .forEach(occurrences::add);
+        });
+        return occurrences;
+    }
+
+    private record Occurrence(LocalDateTime start, LocalDateTime end) {
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static List<Occurrence> occurrencesOf(VEvent vevent, LocalDateTime rangeStart, LocalDateTime rangeEnd,
+                                                  ZoneId zone) {
+        try {
+            Temporal seriesStart = vevent.getStartDate().orElseThrow().getDate();
+            Period range = new Period(fromLocal(rangeStart, seriesStart, zone), fromLocal(rangeEnd, seriesStart, zone));
+            Set<Period<Temporal>> periods = vevent.calculateRecurrenceSet(range);
+            return periods.stream()
+                    .map(p -> new Occurrence(toLocal(p.getStart(), zone), toLocal(p.getEnd(), zone)))
+                    .filter(o -> o.end().isAfter(o.start()))
+                    .sorted(Comparator.comparing(Occurrence::start))
+                    .toList();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
     }
 
     private static String uniqueUid(VEvent vevent, Set<String> calendarUids, Collection<String> usedUids) {

@@ -144,6 +144,55 @@ class IcsRoundTripTest {
     }
 
     @Test
+    void recurringOccurrencesBlockSlotsAndExceptionsAreFixed() {
+        String calendar = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//test//EN
+                BEGIN:VEVENT
+                UID:daily-sync
+                DTSTAMP:20261101T120000Z
+                DTSTART:20261102T130000
+                DTEND:20261102T140000
+                RRULE:FREQ=DAILY;COUNT=10
+                SUMMARY:Daily sync
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:daily-sync
+                RECURRENCE-ID:20261109T130000
+                DTSTAMP:20261101T120000Z
+                DTSTART:20261109T150000
+                DTEND:20261109T160000
+                SUMMARY:Daily sync (moved)
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:planning
+                DTSTAMP:20261101T120000Z
+                DTSTART:20261105T100000
+                DTEND:20261105T110000
+                SUMMARY:Planning
+                END:VEVENT
+                END:VCALENDAR
+                """.replace("\n", "\r\n");
+        ParsedCalendar parsed = ics.parse(calendar.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(parsed.events()).filteredOn(e -> e.title().startsWith("Daily sync"))
+                .hasSize(10)
+                .allSatisfy(e -> assertThat(e.movable()).isFalse());
+        assertThat(parsed.events()).extracting(CalendarEvent::start)
+                .doesNotContain(LocalDateTime.of(2026, 11, 9, 13, 0))
+                .contains(LocalDateTime.of(2026, 11, 9, 15, 0), LocalDateTime.of(2026, 11, 6, 13, 0));
+
+        RescheduleResult friday = rescheduler.reschedule(parsed.events(), THU,
+                List.of(new TimeWindow(FRI, LocalTime.of(13, 0), LocalTime.of(17, 0))), WorkingHours.DEFAULT, 0);
+        assertThat(friday.moves()).singleElement().satisfies(m -> assertThat(m.to()).isEqualTo(FRI.atTime(14, 0)));
+
+        RescheduleResult monday = rescheduler.reschedule(parsed.events(), THU,
+                List.of(new TimeWindow(NEXT_MON, LocalTime.of(13, 0), LocalTime.of(17, 0))), WorkingHours.DEFAULT, 0);
+        assertThat(monday.moves()).singleElement().satisfies(m -> assertThat(m.to()).isEqualTo(NEXT_MON.atTime(13, 0)));
+    }
+
+    @Test
     void rejectsGarbage() {
         assertThatThrownBy(() -> ics.parse("hello, not a calendar".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(InvalidCalendarException.class);

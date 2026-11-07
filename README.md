@@ -20,7 +20,9 @@ and press **I'm sick — reschedule**.
 
 **Fixed vs movable.** An event is *fixed* if its title contains `[fixed]` or if any ATTENDEE has an
 email domain different from the calendar owner's domain (the most common ORGANIZER domain in the
-file). Recurring events (RRULE) are treated as fixed; all-day and cancelled events are ignored.
+file). Recurring events (RRULE/RDATE, and their RECURRENCE-ID exceptions) are fixed, and their
+occurrences up to a month past the calendar are expanded so nothing is moved on top of them;
+all-day and cancelled events are ignored.
 Everything else is *movable*.
 
 **Algorithm** (`RescheduleService`, pure Java):
@@ -50,4 +52,4 @@ Returns `before`, `after`, `moves`, `unplaceable` and `icsDownloadId` (times are
 date-times). Invalid files or inputs return `400` with `{"status":400,"error":"..."}`.
 
 `GET /api/reschedule/{icsDownloadId}/download` returns the updated `.ics` as an attachment.
-Results are kept in memory (most recent 200).
+Results are kept in memory (most recent 200, max 20 MB in total).
