@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reschedule Fairy</title>
+<style>
+  :root {
+    --bg: #f4f2fb;
+    --card: #ffffff;
+    --ink: #111827;
+    --muted: #4b5563;
+    --line: #d9d6e8;
+    --brand: #5b21b6;
+    --brand-dark: #4c1d95;
+    --movable: #1d4ed8;
+    --moved: #15803d;
+    --fixed: #4b5563;
+    --danger: #b91c1c;
+    --danger-bg: #fef2f2;
+    --hour: 56px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 20px;
+    line-height: 1.4;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  header {
+    background: linear-gradient(120deg, var(--brand-dark), #7c3aed);
+    color: #fff;
+    padding: 28px 40px;
+  }
+  header h1 { margin: 0; font-size: 44px; letter-spacing: -0.5px; }
+  header p { margin: 6px 0 0; font-size: 22px; opacity: 0.95; }
+  main { max-width: 1840px; margin: 0 auto; padding: 28px 40px 60px; }
+  .panel {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(480px, 2fr);
+    gap: 24px;
+  }
+  .card {
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 16px;
+    padding: 24px 28px;
+  }
+  .card h2 { margin: 0 0 16px; font-size: 26px; }
+  .step { display: inline-flex; width: 36px; height: 36px; border-radius: 50%; background: var(--brand); color: #fff;
+          align-items: center; justify-content: center; font-size: 20px; margin-right: 10px; vertical-align: 2px; }
+  button, .button {
+    font: inherit;
+    font-weight: 600;
+    border-radius: 12px;
+    border: 2px solid var(--brand);
+    padding: 12px 22px;
+    cursor: pointer;
+    background: #fff;
+    color: var(--brand);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  button:hover, .button:hover { background: #f3edff; }
+  button:focus-visible, .button:focus-visible, input:focus-visible { outline: 4px solid #f59e0b; outline-offset: 2px; }
+  button.primary, .button.primary { background: var(--brand); color: #fff; }
+  button.primary:hover, .button.primary:hover { background: var(--brand-dark); }
+  button:disabled { opacity: 0.7; cursor: progress; }
+  .file-row { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+  input[type="file"] { font: inherit; font-size: 18px; max-width: 100%; }
+  input[type="file"]::file-selector-button {
+    font: inherit; font-weight: 600; border: 2px solid var(--ink); background: #fff; border-radius: 10px;
+    padding: 8px 16px; margin-right: 12px; cursor: pointer;
+  }
+  .file-status { font-size: 19px; color: var(--muted); }
+  .file-status strong { color: var(--ink); }
+  .controls { display: grid; grid-template-columns: auto 1fr; gap: 18px 28px; align-items: start; }
+  .controls label.field { font-weight: 700; padding-top: 8px; }
+  input[type="date"], input[type="number"] {
+    font: inherit; padding: 8px 12px; border: 2px solid var(--ink); border-radius: 10px; background: #fff;
+  }
+  input[type="number"] { width: 110px; }
+  .windows { display: flex; flex-direction: column; gap: 10px; }
+  .windows label { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .windows input { width: 24px; height: 24px; accent-color: var(--brand); }
+  .windows .when { color: var(--muted); font-size: 18px; }
+  .go-row { grid-column: 1 / -1; padding-top: 6px; }
+  #go { font-size: 28px; padding: 18px 34px; border-radius: 16px; }
+  .spinner {
+    width: 26px; height: 26px; border: 4px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.8s linear infinite; display: none;
+  }
+  #go.loading .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error {
+    margin-top: 22px; padding: 16px 20px; border-radius: 12px; border: 2px solid var(--danger);
+    background: var(--danger-bg); color: var(--danger); font-weight: 600;
+  }
+  #results { margin-top: 30px; }
+  .summary-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  #summary { font-size: 32px; font-weight: 800; margin: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 18px; color: var(--muted); margin: 12px 0 18px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .swatch { width: 20px; height: 20px; border-radius: 5px; display: inline-block; }
+  .grids { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .grid-card h3 { margin: 0 0 12px; font-size: 26px; }
+  .week { display: grid; border: 2px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+  .week .corner, .week .dayhead {
+    background: #f8f7fc; border-bottom: 2px solid var(--line); padding: 8px 4px; text-align: center;
+    font-weight: 700; font-size: 17px; line-height: 1.2;
+  }
+  .week .dayhead small { display: block; font-weight: 500; color: var(--muted); font-size: 15px; }
+  .week .dayhead.out { background: #fde68a; }
+  .week .dayhead.extra { background: #ede9fe; }
+  .times { position: relative; border-right: 2px solid var(--line); }
+  .times div { position: absolute; right: 6px; font-size: 14px; color: var(--muted); transform: translateY(-50%); }
+  .daycol { position: relative; border-left: 1px solid var(--line); }
+  .daycol.out { background: repeating-linear-gradient(45deg, #fffbeb, #fffbeb 10px, #fef3c7 10px, #fef3c7 20px); }
+  .hourline { position: absolute; left: 0; right: 0; border-top: 1px solid #ece9f5; }
+  .event {
+    position: absolute; border-radius: 8px; padding: 3px 6px; overflow: hidden; color: #fff;
+    background: var(--movable); font-size: 14px; line-height: 1.2; border: 2px solid rgba(0,0,0,0.15);
+  }
+  .event .t { font-weight: 700; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; word-break: break-word; }
+  .event.tall .t { -webkit-line-clamp: 2; }
+  .event .time { font-size: 13px; opacity: 0.95; }
+  .event.fixed { background: var(--fixed); }
+  .event.moved { background: var(--moved); border-color: #052e16; box-shadow: 0 0 0 3px #bbf7d0; }
+  .event.leaving { background: #fff; color: var(--moved); border: 2px dashed var(--moved); }
+  .event.stuck { background: #fff; color: var(--danger); border: 3px solid var(--danger); }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
+    background: #fff; color: var(--moved); border-radius: 6px; padding: 0 5px; margin-right: 4px; vertical-align: 1px;
+  }
+  .lock { width: 12px; height: 12px; vertical-align: -1px; margin-right: 3px; fill: currentColor; }
+  .lists { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+  .lists h3 { margin: 0 0 10px; font-size: 24px; }
+  .lists ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .lists li { border-radius: 12px; padding: 12px 16px; }
+  .moves li { background: #f0fdf4; border: 2px solid #86efac; }
+  .unplaceable li { background: var(--danger-bg); border: 2px solid var(--danger); color: var(--danger); }
+  .unplaceable li .reason { display: block; color: #7f1d1d; font-size: 18px; }
+  .muted { color: var(--muted); }
+  .download-row { margin-top: 28px; }
+  .download-row .button { font-size: 24px; padding: 16px 28px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 1300px) {
+    .panel, .grids, .lists { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Reschedule Fairy</h1>
+  <p>Out sick? Upload your calendar and I'll whisk your movable meetings into free slots on other days.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="card">
+      <h2><span class="step">1</span>Your calendar</h2>
+      <div class="file-row">
+        <input type="file" id="file" accept=".ics,text/calendar" aria-label="Upload a .ics calendar file">
+        <button type="button" id="useSample">Use sample calendar</button>
+        <div class="file-status" id="fileStatus">No calendar loaded yet.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">2</span>When are you out?</h2>
+      <div class="controls">
+        <label class="field" for="sourceDay">Day I'm out</label>
+        <div><input type="date" id="sourceDay" value="2026-11-05"></div>
+
+        <span class="field" style="font-weight:700;padding-top:4px">Move meetings to</span>
+        <div class="windows" id="windows">
+          <label><input type="checkbox" value="friPm" checked> Friday afternoon <span class="when" data-for="friPm"></span></label>
+          <label><input type="checkbox" value="monPm" checked> Next Monday afternoon <span class="when" data-for="monPm"></span></label>
+          <label><input type="checkbox" value="friAm"> Friday morning <span class="when" data-for="friAm"></span></label>
+        </div>
+
+        <label class="field" for="buffer">Buffer (minutes)</label>
+        <div><input type="number" id="buffer" value="15" min="0" max="240" step="5"></div>
+
+        <div class="go-row">
+          <button type="button" class="primary" id="go"><span class="spinner" aria-hidden="true"></span><span class="label">I'm sick — reschedule</span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="error" id="error" role="alert" hidden></div>
+
+  <section id="results" hidden aria-live="polite">
+    <div class="summary-row">
+      <p id="summary"></p>
+    </div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--movable)"></i>Movable</span>
+      <span><i class="swatch" style="background:var(--fixed)"></i>Fixed (locked)</span>
+      <span><i class="swatch" style="background:var(--moved)"></i>Moved</span>
+      <span><i class="swatch" style="border:2px dashed var(--moved)"></i>Moving out</span>
+      <span><i class="swatch" style="border:3px solid var(--danger)"></i>Couldn't fit</span>
+    </div>
+    <div class="grids">
+      <div class="grid-card"><h3>Before</h3><div class="week" id="beforeGrid"></div></div>
+      <div class="grid-card"><h3>After</h3><div class="week" id="afterGrid"></div></div>
+    </div>
+    <div class="lists">
+      <div class="unplaceable" id="unplaceableBox">
+        <h3>Couldn't fit</h3>
+        <ul id="unplaceableList"></ul>
+      </div>
+      <div class="moves">
+        <h3>Moves</h3>
+        <ul id="movesList"></ul>
+      </div>
+    </div>
+    <div class="download-row">
+      <a class="button primary" id="download" href="#" download>Download new calendar (.ics)</a>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const DAY_START = 8, DAY_END = 18;
+  const WINDOWS = {
+    friPm: { weekday: 5, start: '13:00', end: '17:00' },
+    monPm: { weekday: 1, start: '13:00', end: '17:00' },
+    friAm: { weekday: 5, start: '09:00', end: '12:00' }
+  };
+  const LOCK = '<svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>';
+
+  const $ = id => document.getElementById(id);
+  let currentFile = null;
+
+  const pad = n => String(n).padStart(2, '0');
+  const isoDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parseDate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const parseDateTime = s => { const [d, t] = s.split('T'); const date = parseDate(d); const [h, mi] = t.split(':').map(Number); date.setHours(h, mi); return date; };
+  const addDays = (d, n) => { const c = new Date(d); c.setDate(c.getDate() + n); return c; };
+  const hm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const dayLabel = d => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function nextWeekday(after, weekday) {
+    let d = addDays(after, 1);
+    while (d.getDay() !== weekday) d = addDays(d, 1);
+    return d;
+  }
+
+  function selectedWindows() {
+    const out = parseDate($('sourceDay').value);
+    return [...document.querySelectorAll('#windows input:checked')].map(cb => {
+      const w = WINDOWS[cb.value];
+      return { date: isoDate(nextWeekday(out, w.weekday)), start: w.start, end: w.end };
+    });
+  }
+
+  function refreshWindowLabels() {
+    if (!$('sourceDay').value) return;
+    const out = parseDate($('sourceDay').value);
+    document.querySelectorAll('#windows .when').forEach(el => {
+      const w = WINDOWS[el.dataset.for];
+      el.textContent = `· ${dayLabel(nextWeekday(out, w.weekday))}, ${w.start}–${w.end}`;
+    });
+  }
+
+  function setFile(file, label) {
+    currentFile = file;
+    $('fileStatus').innerHTML = `Loaded: <strong>${escapeHtml(label)}</strong>`;
+    hideError();
+  }
+
+  function showError(msg) { $('error').textContent = msg; $('error').hidden = false; }
+  function hideError() { $('error').hidden = true; }
+
+  $('file').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) setFile(f, f.name);
+  });
+
+  $('useSample').addEventListener('click', async () => {
+    try {
+      const res = await fetch('/sample.ics');
+      if (!res.ok) throw new Error('Could not load the sample calendar');
+      const blob = await res.blob();
+      setFile(new File([blob], 'sample.ics', { type: 'text/calendar' }), 'sample.ics (sample work week)');
+      $('file').value = '';
+      $('sourceDay').value = '2026-11-05';
+      refreshWindowLabels();
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  $('sourceDay').addEventListener('change', refreshWindowLabels);
+
+  $('go').addEventListener('click', async () => {
+    hideError();
+    if (!currentFile) { showError('Upload a .ics file or click "Use sample calendar" first.'); return; }
+    if (!$('sourceDay').value) { showError('Pick the day you\'re out.'); return; }
+    const windows = selectedWindows();
+    if (!windows.length) { showError('Tick at least one window to move meetings into.'); return; }
+
+    const form = new FormData();
+    form.append('file', currentFile);
+    form.append('sourceDay', $('sourceDay').value);
+    form.append('targetWindows', JSON.stringify(windows));
+    form.append('bufferMinutes', $('buffer').value || '0');
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/reschedule', { method: 'POST', body: form });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+      render(body, windows);
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  function setLoading(on) {
+    const btn = $('go');
+    btn.disabled = on;
+    btn.classList.toggle('loading', on);
+    btn.querySelector('.label').textContent = on ? 'Sprinkling fairy dust…' : "I'm sick — reschedule";
+  }
+
+  function render(data, windows) {
+    const outDay = $('sourceDay').value;
+    const monday = (() => { const d = parseDate(outDay); return addDays(d, -((d.getDay() + 6) % 7)); })();
+    const days = [0, 1, 2, 3, 4].map(i => isoDate(addDays(monday, i)));
+    const extra = [...new Set([...windows.map(w => w.date), ...data.moves.map(m => m.to.slice(0, 10))])]
+      .filter(d => !days.includes(d)).sort();
+    const allDays = [...days, ...extra];
+
+    const movedIds = new Set(data.moves.map(m => m.uid));
+    const stuckIds = new Set(data.unplaceable.map(u => u.uid));
+
+    renderGrid($('beforeGrid'), allDays, extra, outDay, data.before, e =>
+      movedIds.has(e.uid) ? 'leaving' : stuckIds.has(e.uid) ? 'stuck' : e.movable ? '' : 'fixed');
+    renderGrid($('afterGrid'), allDays, extra, outDay, data.after, e =>
+      e.moved ? 'moved' : stuckIds.has(e.uid) ? 'stuck' : e.movable ? '' : 'fixed');
+
+    const moved = data.moves.length, stuck = data.unplaceable.length;
+    const meetings = n => `${n} meeting${n === 1 ? '' : 's'}`;
+    let summary = moved || stuck
+      ? `Moved ${meetings(moved)}${stuck ? `, ${stuck} couldn't fit` : ' — all fit!'}`
+      : `No movable meetings on ${dayLabel(parseDate(outDay))}`;
+    $('summary').textContent = summary;
+
+    $('unplaceableBox').hidden = stuck === 0;
+    $('unplaceableList').innerHTML = data.unplaceable.map(u =>
+      `<li><strong>${escapeHtml(u.title)}</strong><span class="reason">${escapeHtml(u.reason)}</span></li>`).join('');
+    $('movesList').innerHTML = moved
+      ? data.moves.map(m => {
+          const from = parseDateTime(m.from), to = parseDateTime(m.to);
+          return `<li><strong>${escapeHtml(m.title)}</strong><br><span class="muted">${dayLabel(from)} ${hm(from)}</span> → <strong>${dayLabel(to)} ${hm(to)}</strong></li>`;
+        }).join('')
+      : '<li class="muted">Nothing moved.</li>';
+
+    $('download').href = `/api/reschedule/${encodeURIComponent(data.icsDownloadId)}/download`;
+    $('results').hidden = false;
+    $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderGrid(container, days, extraDays, outDay, events, classFor) {
+    const hours = DAY_END - DAY_START;
+    const hourPx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hour'));
+    const height = hours * hourPx;
+    container.style.gridTemplateColumns = `56px repeat(${days.length}, minmax(0, 1fr))`;
+
+    let html = '<div class="corner"></div>';
+    days.forEach(d => {
+      const date = parseDate(d);
+      const cls = d === outDay ? 'out' : extraDays.includes(d) ? 'extra' : '';
+      const note = d === outDay ? 'out sick' : extraDays.includes(d) ? 'next week' : '';
+      html += `<div class="dayhead ${cls}">${date.toLocaleDateString('en-GB', { weekday: 'short' })} ${date.getDate()}<small>${note || date.toLocaleDateString('en-GB', { month: 'short' })}</small></div>`;
+    });
+
+    html += `<div class="times" style="height:${height}px">`;
+    for (let h = DAY_START + 1; h < DAY_END; h++) html += `<div style="top:${(h - DAY_START) * hourPx}px">${pad(h)}:00</div>`;
+    html += '</div>';
+
+    days.forEach(d => {
+      const dayEvents = events.filter(e => e.start.slice(0, 10) === d)
+        .map(e => ({ ...e, s: parseDateTime(e.start), en: parseDateTime(e.end) }))
+        .sort((a, b) => a.s - b.s);
+      layoutLanes(dayEvents);
+      html += `<div class="daycol ${d === outDay ? 'out' : ''}" style="height:${height}px">`;
+      for (let h = 1; h < hours; h++) html += `<div class="hourline" style="top:${h * hourPx}px"></div>`;
+      dayEvents.forEach(e => {
+        const startH = Math.max(e.s.getHours() + e.s.getMinutes() / 60, DAY_START);
+        const endH = Math.min(e.en.getHours() + e.en.getMinutes() / 60 + (e.en.toDateString() !== e.s.toDateString() ? 24 : 0), DAY_END);
+        if (endH <= DAY_START || startH >= DAY_END) return;
+        const top = (startH - DAY_START) * hourPx;
+        const h = Math.max((endH - startH) * hourPx - 2, 18);
+        const width = 100 / e.lanes;
+        const cls = classFor(e);
+        const prefix = cls === 'moved' ? '<span class="badge">moved</span>' : cls === 'fixed' ? LOCK : '';
+        const tip = `${e.title}\n${hm(e.s)}–${hm(e.en)}${e.movable ? '' : ' (fixed)'}`;
+        html += `<div class="event ${cls}${h >= 50 ? ' tall' : ''}" title="${escapeHtml(tip)}" style="top:${top + 1}px;height:${h}px;left:calc(${e.lane * width}% + 3px);width:calc(${width}% - 6px)">`
+          + `<span class="t">${prefix}${escapeHtml(e.title)}</span>`
+          + (h >= 34 ? `<span class="time">${hm(e.s)}–${hm(e.en)}</span>` : '')
+          + '</div>';
+      });
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  }
+
+  function layoutLanes(events) {
+    let cluster = [], clusterEnd = 0;
+    const flush = () => {
+      const laneEnds = [];
+      cluster.forEach(e => {
+        let lane = laneEnds.findIndex(end => end <= e.s);
+        if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+        laneEnds[lane] = e.en;
+        e.lane = lane;
+      });
+      cluster.forEach(e => { e.lanes = laneEnds.length; });
+      cluster = [];
+    };
+    events.forEach(e => {
+      if (cluster.length && e.s >= clusterEnd) flush();
+      cluster.push(e);
+      clusterEnd = Math.max(clusterEnd, e.en);
+    });
+    if (cluster.length) flush();
+  }
+
+  refreshWindowLabels();
+})();
+</script>
+</body>
+</html>
