@@ -30,11 +30,14 @@ import java.time.ZonedDateTime;
 import java.time.temporal.Temporal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -70,12 +73,14 @@ public class IcsCalendarService {
                 .flatMap(Optional::stream)
                 .toList());
 
+        Set<String> usedUids = vevents.stream()
+                .map(v -> v.getUid().map(Uid::getValue).orElse(""))
+                .filter(v -> !v.isBlank())
+                .collect(Collectors.toCollection(HashSet::new));
         List<CalendarEvent> events = new ArrayList<>();
         Map<String, VEvent> components = new LinkedHashMap<>();
-        int index = 0;
         for (VEvent vevent : vevents) {
-            index++;
-            Optional<CalendarEvent> event = toEvent(vevent, zone, ownerDomain, index, components.keySet());
+            Optional<CalendarEvent> event = toEvent(vevent, zone, ownerDomain, usedUids, components.keySet());
             if (event.isPresent()) {
                 events.add(event.get());
                 components.put(event.get().uid(), vevent);
@@ -116,7 +121,7 @@ public class IcsCalendarService {
     }
 
     private static Optional<CalendarEvent> toEvent(VEvent vevent, ZoneId zone, Optional<String> ownerDomain,
-                                                   int index, Collection<String> usedUids) {
+                                                   Set<String> calendarUids, Collection<String> usedUids) {
         Optional<DateProperty<Temporal>> startProp = vevent.<Temporal>getStartDate().map(s -> s);
         if (startProp.isEmpty() || startProp.get().getDate() instanceof LocalDate) {
             return Optional.empty();
@@ -143,7 +148,7 @@ public class IcsCalendarService {
         }
 
         String title = vevent.getProperty(Property.SUMMARY).map(Property::getValue).orElse("(untitled)");
-        String uid = uniqueUid(vevent, index, usedUids);
+        String uid = uniqueUid(vevent, calendarUids, usedUids);
         boolean recurring = vevent.getProperty(Property.RRULE).isPresent();
         boolean external = ownerDomain.isPresent() && vevent.<Attendee>getProperties(Property.ATTENDEE).stream()
                 .map(a -> domainOf(a.getCalAddress()))
@@ -153,11 +158,15 @@ public class IcsCalendarService {
         return Optional.of(new CalendarEvent(uid, title, start, end, !(external || markedFixed || recurring)));
     }
 
-    private static String uniqueUid(VEvent vevent, int index, Collection<String> usedUids) {
+    private static String uniqueUid(VEvent vevent, Set<String> calendarUids, Collection<String> usedUids) {
         Optional<String> existing = vevent.getUid().map(Uid::getValue).filter(v -> !v.isBlank());
         if (existing.isEmpty()) {
-            String generated = "reschedule-fairy-" + index;
-            vevent.add(new Uid(generated));
+            String generated;
+            do {
+                generated = "reschedule-fairy-" + UUID.randomUUID();
+            } while (calendarUids.contains(generated));
+            calendarUids.add(generated);
+            vevent.replace(new Uid(generated));
             return generated;
         }
         String uid = existing.get();

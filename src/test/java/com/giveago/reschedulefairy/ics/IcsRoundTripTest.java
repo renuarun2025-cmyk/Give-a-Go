@@ -116,6 +116,34 @@ class IcsRoundTripTest {
     }
 
     @Test
+    void generatedUidsDoNotCollideWithExistingOnes() {
+        String calendar = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//test//EN
+                BEGIN:VEVENT
+                DTSTAMP:20261101T120000Z
+                DTSTART:20261105T100000
+                DTEND:20261105T110000
+                SUMMARY:No uid
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:reschedule-fairy-1
+                DTSTAMP:20261101T120000Z
+                DTSTART:20261105T120000
+                DTEND:20261105T130000
+                SUMMARY:Has uid
+                END:VEVENT
+                END:VCALENDAR
+                """.replace("\n", "\r\n");
+        ParsedCalendar parsed = ics.parse(calendar.getBytes(StandardCharsets.UTF_8));
+        assertThat(parsed.events()).extracting(CalendarEvent::uid).doesNotHaveDuplicates().contains("reschedule-fairy-1");
+
+        Map<String, CalendarEvent> reparsed = byTitle(ics.parse(ics.write(parsed, List.of())).events());
+        assertThat(reparsed.get("No uid").uid()).isEqualTo(byTitle(parsed.events()).get("No uid").uid());
+    }
+
+    @Test
     void rejectsGarbage() {
         assertThatThrownBy(() -> ics.parse("hello, not a calendar".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(InvalidCalendarException.class);
