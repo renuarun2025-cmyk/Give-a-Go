@@ -177,6 +177,7 @@ public class IcsCalendarService {
         Set<String> overridden = vevents.stream()
                 .filter(v -> v.getUid().isPresent())
                 .flatMap(v -> v.<DateProperty<Temporal>>getProperty(Property.RECURRENCE_ID).stream()
+                        .filter(r -> !(r.getDate() instanceof LocalDate))
                         .map(r -> v.getUid().get().getValue() + "|" + toLocal(r.getDate(), zone)))
                 .collect(Collectors.toSet());
 

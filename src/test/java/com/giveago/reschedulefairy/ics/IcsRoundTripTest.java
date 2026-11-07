@@ -193,6 +193,40 @@ class IcsRoundTripTest {
     }
 
     @Test
+    void allDayRecurrenceExceptionsAreIgnored() {
+        String calendar = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//test//EN
+                BEGIN:VEVENT
+                UID:offsite
+                DTSTAMP:20261101T120000Z
+                DTSTART;VALUE=DATE:20261102
+                RRULE:FREQ=WEEKLY;COUNT=4
+                SUMMARY:Offsite
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:offsite
+                RECURRENCE-ID;VALUE=DATE:20261109
+                DTSTAMP:20261101T120000Z
+                DTSTART;VALUE=DATE:20261110
+                SUMMARY:Offsite (moved)
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:planning
+                DTSTAMP:20261101T120000Z
+                DTSTART:20261105T100000
+                DTEND:20261105T110000
+                SUMMARY:Planning
+                END:VEVENT
+                END:VCALENDAR
+                """.replace("\n", "\r\n");
+
+        assertThat(ics.parse(calendar.getBytes(StandardCharsets.UTF_8)).events())
+                .extracting(CalendarEvent::title).containsExactly("Planning");
+    }
+
+    @Test
     void rejectsGarbage() {
         assertThatThrownBy(() -> ics.parse("hello, not a calendar".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(InvalidCalendarException.class);
